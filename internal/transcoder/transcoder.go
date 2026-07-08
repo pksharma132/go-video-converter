@@ -16,8 +16,8 @@ func New() *Transcoder {
 }
 
 type ConvertParam struct {
-	Input  string
-	Output string
+	Input  string `json:"input" validate:"required"`
+	Output string `json:"output" validate:"required"`
 }
 
 type Progress struct {
@@ -28,6 +28,29 @@ type Progress struct {
 	Speed   string
 }
 
+func updateProgress(progress *Progress, key string, val string) {
+
+	if key == "frame" {
+		progress.Frame = val
+	}
+
+	if key == "bitrate" {
+		progress.Bitrate = val
+	}
+
+	if key == "fps" {
+		progress.FPS = val
+	}
+
+	if key == "out_time" {
+		progress.Outtime = val
+	}
+
+	if key == "speed" {
+		progress.Speed = val
+	}
+
+}
 func (t *Transcoder) Convert(ctx context.Context, param ConvertParam, progresschan chan<- Progress) error {
 
 	defer close(progresschan)
@@ -49,40 +72,23 @@ func (t *Transcoder) Convert(ctx context.Context, param ConvertParam, progressch
 	for scanner.Scan() {
 		t := scanner.Text()
 		split := strings.SplitN(t, "=", 2)
-		var key string
-		var val string
 
-		for i, a := range split {
-			if i == 0 {
-				key = a
-			} else {
-				val = a
+		if len(split) < 2 {
+			continue
+		}
+
+		key := split[0]
+		val := split[1]
+
+		updateProgress(&progress, key, val)
+
+		if key == "progress" {
+			select {
+			case progresschan <- progress:
+				progress = Progress{}
+			case <-ctx.Done():
+				return ctx.Err()
 			}
-		}
-
-
-		if key == "frame" {
-			progress.Frame = val
-		}
-
-		if key == "bitrate" {
-			progress.Bitrate = val
-		}
-
-		if key == "fps" {
-			progress.FPS = val
-		}
-
-		if key == "out_time" {
-			progress.Outtime = val
-		}
-
-		if key == "speed" {
-			progress.Speed = val
-		}
-
-		if key == "progress" && val == "continue" {
-			fmt.Println("progress", progress)
 		}
 
 	}
@@ -92,6 +98,9 @@ func (t *Transcoder) Convert(ctx context.Context, param ConvertParam, progressch
 	}
 
 	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("ffmpeg process failed, %w", err)
 	}
 
