@@ -2,10 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"go-video-converter/internal/transcoder"
 	"log"
 	"net/http"
-
 	"github.com/go-playground/validator/v10"
 )
 
@@ -14,9 +14,9 @@ type HealthResponse struct {
 }
 
 func health(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "Application/Json")
-	res := HealthResponse{Status: "ok"}
-	json.NewEncoder(w).Encode(res)
+	if err := writeJson(w, http.StatusOK, HealthResponse{Status: "ok"}); err != nil {
+		log.Println("error while writing response", err)
+	}
 }
 
 type ErrorResponse struct {
@@ -25,25 +25,38 @@ type ErrorResponse struct {
 
 var validate *validator.Validate = validator.New()
 
+func writeJson(w http.ResponseWriter, status int, data any) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		return fmt.Errorf("error encoding the data, %w", err)
+	}
+
+	return nil
+}
+
 func post(w http.ResponseWriter, r *http.Request) {
 	var response transcoder.ConvertParam
 
 	if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "error decoding body"})
+		if err := writeJson(w, http.StatusBadRequest, ErrorResponse{Error: "error decoding body"}); err != nil {
+			log.Println("error while writing response", err)
+		}
 		return
 	}
 
 	err := validate.Struct(response)
 
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request body"})
+		if err := writeJson(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"}); err != nil {
+			log.Println("error while writing response", err)
+		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := writeJson(w, http.StatusOK, response); err != nil {
+		log.Println("error while writing response", err)
+	}
 
 }
 
